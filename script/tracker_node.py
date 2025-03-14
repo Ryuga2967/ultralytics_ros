@@ -17,7 +17,6 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-import cv_bridge
 import numpy as np
 import roslib.packages
 import rospy
@@ -25,6 +24,46 @@ from sensor_msgs.msg import Image
 from ultralytics import YOLO
 from vision_msgs.msg import Detection2D, Detection2DArray, ObjectHypothesisWithPose
 from ultralytics_ros.msg import YoloResult
+
+import cv2
+import numpy as np
+import sensor_msgs
+
+def cv2_to_imgmsg(cvim, encoding="passthrough", header=None):
+    if not isinstance(cvim, (np.ndarray, np.generic)):
+        raise TypeError('Your input type is not a numpy array')
+    # prepare msg
+    img_msg = sensor_msgs.msg.Image()
+    img_msg.height = cvim.shape[0]
+    img_msg.width = cvim.shape[1]
+    if header is not None:
+        img_msg.header = header
+    # encoding handling
+    numpy_type_to_cvtype = {'uint8': '8U', 'int8': '8S', 'uint16': '16U',
+                            'int16': '16S', 'int32': '32S', 'float32': '32F',
+                            'float64': '64F'}
+    numpy_type_to_cvtype.update(dict((v, k) for (k, v) in numpy_type_to_cvtype.items()))
+    if len(cvim.shape) < 3:
+        cv_type = '{}C{}'.format(numpy_type_to_cvtype[cvim.dtype.name], 1)
+    else:
+        cv_type = '{}C{}'.format(numpy_type_to_cvtype[cvim.dtype.name], cvim.shape[2])
+    if encoding == "passthrough":
+        img_msg.encoding = cv_type
+    else:
+        img_msg.encoding = encoding
+    if cvim.dtype.byteorder == '>':
+        img_msg.is_bigendian = True
+    # img data to msg data
+    img_msg.data = cvim.tobytes()
+    img_msg.step = len(img_msg.data) // img_msg.height
+
+    return img_msg
+
+
+def imgmsg_to_cv2(img_msg, dtype=np.uint8):
+    # it should be possible to determine dtype from img_msg.encoding but there is many different cases to take into account
+    # original function args: imgmsg_to_cv2(img_msg, desired_encoding = "passthrough")
+    return np.frombuffer(img_msg.data, dtype=dtype).reshape(img_msg.height, img_msg.width, -1)[..., ::-1]
 
 
 class TrackerNode:
@@ -59,11 +98,10 @@ class TrackerNode:
         self.result_image_pub = rospy.Publisher(
             self.result_image_topic, Image, queue_size=1
         )
-        self.bridge = cv_bridge.CvBridge()
         self.use_segmentation = yolo_model.endswith("-seg.pt")
 
     def image_callback(self, msg):
-        cv_image = self.bridge.imgmsg_to_cv2(msg, desired_encoding="bgr8")
+        cv_image = imgmsg_to_cv2(msg)
 
         results = self.model.track(
             source=cv_image,
@@ -116,7 +154,7 @@ class TrackerNode:
             labels=self.result_labels,
             boxes=self.result_boxes,
         )
-        result_image_msg = self.bridge.cv2_to_imgmsg(plotted_image, encoding="bgr8")
+        result_image_msg = cv2_to_imgmsg(plotted_image, encoding="bgr8")
         return result_image_msg
 
     def create_segmentation_masks(self, results):
@@ -130,7 +168,7 @@ class TrackerNode:
                         )
                         * 255
                     )
-                    mask_image_msg = self.bridge.cv2_to_imgmsg(
+                    mask_image_msg = cv2_to_imgmsg(
                         mask_numpy, encoding="mono8"
                     )
                     masks_msg.append(mask_image_msg)

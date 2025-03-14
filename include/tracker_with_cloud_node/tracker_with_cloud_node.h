@@ -41,7 +41,6 @@
 #include <pcl/io/pcd_io.h>
 #include <pcl/point_types.h>
 #include <pcl/segmentation/extract_clusters.h>
-#include <pcl/filters/voxel_grid.h>
 #include <pcl_conversions/pcl_conversions.h>
 #include <pcl_ros/point_cloud.h>
 #include <pcl_ros/transforms.h>
@@ -75,7 +74,6 @@ private:
   std::string yolo_result_topic_;
   std::string yolo_3d_result_topic_;
   float cluster_tolerance_;
-  float voxel_leaf_size_;
   int min_cluster_size_;
   int max_cluster_size_;
 
@@ -89,6 +87,7 @@ public:
                     vision_msgs::Detection3DArray& detections3d_msg,
                     sensor_msgs::PointCloud2& combine_detection_cloud_msg);
   void processPointsWithBbox(const pcl::PointCloud<pcl::PointXYZ>::Ptr& cloud,
+                             std::vector<pcl::PointIndices>& clusters,
                              const vision_msgs::Detection2D& detection,
                              pcl::PointCloud<pcl::PointXYZ>::Ptr& detection_cloud_raw);
   void processPointsWithMask(const pcl::PointCloud<pcl::PointXYZ>::Ptr& cloud, const sensor_msgs::Image& mask,
@@ -97,10 +96,12 @@ public:
   pcl::PointCloud<pcl::PointXYZ>::Ptr cloud2TransformedCloud(const pcl::PointCloud<pcl::PointXYZ>::Ptr& cloud,
                                                              const std::string& source_frame,
                                                              const std::string& target_frame, const ros::Time& stamp);
-  pcl::PointCloud<pcl::PointXYZ>::Ptr euclideanClusterExtraction(const pcl::PointCloud<pcl::PointXYZ>::Ptr& cloud);
+  std::vector<pcl::PointIndices> euclideanClusterExtraction(const pcl::PointCloud<pcl::PointXYZ>::Ptr& cloud);
   void createBoundingBox(vision_msgs::Detection3DArray& detections3d_msg,
                          const pcl::PointCloud<pcl::PointXYZ>::Ptr& cloud,
                          const std::vector<vision_msgs::ObjectHypothesisWithPose>& detections_results);
+  void createUnknownBoundingBox(vision_msgs::Detection3DArray& detections3d_msg, Eigen::Vector4f bbox_center,
+                                std::string const& source_frame, std::string const& target_frame, ros::Time const& stamp);
   visualization_msgs::MarkerArray createMarkerArray(const vision_msgs::Detection3DArray& detections3d_msg,
                                                     const double& duration);
 };
